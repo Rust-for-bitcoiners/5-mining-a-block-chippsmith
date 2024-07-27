@@ -15,6 +15,8 @@ use bitcoin_hashes::{sha256, sha256d::Hash as OtherHash};
 
 use bitcoin::secp256k1::hashes::Hash;
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 // If time write signature verification for transactions
 
 // Better way?
@@ -35,19 +37,26 @@ impl TransactionWithDetails {
 pub fn read_transactions_from_mempool_dir() -> Vec<TransactionWithDetails> {
     let mut transactions = Vec::new(); // Empty vector to store transaction details
     let paths = fs::read_dir("./mempool").unwrap(); // Gets paths to all files in director ./mempool
-
+    let mut total_weight = 0;
     // Loops through paths
     for path in paths {
+        println!("{:?}", (path.as_ref()).unwrap().path());
+        if path.as_ref().unwrap().path().as_mut_os_string() == "./mempool/mempool.json"{
+            continue
+        }
         let file = std::fs::File::open(path.unwrap().path()).expect("error reading files"); // Read file
         let json: Value = serde_json::from_reader(file).expect("error parsing json 1"); // Reads json from file
         let raw_tx = json["hex"].as_str().expect("error parsing json 2"); // Gets raw transaction hex from json
         let fee = json["fee"].as_u64().unwrap(); //Gets fee data from json
+        let weight = json["weight"].as_u64().unwrap();
+        total_weight += weight;
         let transaction_bytes = hex::decode(raw_tx).expect("error decoding hex"); // Decodes raw transaction data into a Vector of u8
         let mut byte_slice = transaction_bytes.as_slice(); // Turns Vec<u8> into slice to be read by Transaction::consensus_decode
         let transaction = Transaction::consensus_decode(&mut byte_slice).expect("error decoding"); // Turns raw transaction into struct Transaction
         let transaction_with_details = TransactionWithDetails { transaction, fee }; //must be a better way to add the fee than creating a new struct
         transactions.push(transaction_with_details);
     }
+    println!("total_weight:  {:?}", total_weight);
     transactions
 }
 
@@ -67,7 +76,7 @@ pub fn cull_transactions(transactions: Vec<TransactionWithDetails>) -> Vec<Trans
     for tx in transactions {
         total_weight += tx.transaction.weight().to_vbytes_ceil();
         v.push(tx);
-        if total_weight > 4_000_000 {
+        if total_weight > 1_000_000 {
             break;
         }
     }
@@ -107,7 +116,7 @@ pub fn block_header() -> Header {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0,
         ])), // Default merkle root wiil be changed when it can be calulated from the list of txs
-        time: 1721771481,                          // would be current time in practice
+        time: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32,                          // would be current time in practice
         bits: Target::from_hex(
             &"0x0000ffff00000000000000000000000000000000000000000000000000000000",
         )
@@ -158,14 +167,17 @@ pub fn create_coinbase_transaction() -> Transaction {
         witness: witness, // Need 32 byte reserved value all zeros if block contains segwit transactions
     };
 
+    /*
+    cant use because need the first output of the coinbas transaction to be the wTXID commitment
     let op_return_data = String::from("Hello Rust Class").into_bytes();
     // seems excessive but couldnt satisfy pushbytes with any other type
     let op_return_data: &[u8; 16] = op_return_data.as_slice().try_into().expect("error");
     let op_return_script = ScriptBuf::new_op_return(op_return_data);
+     */
 
     let output = TxOut {
         value: Amount::ZERO,
-        script_pubkey: op_return_script,
+        script_pubkey: ScriptBuf::new(),
     };
 
     let value = Amount::from_btc(3.125).expect("error creating amount for output");
@@ -197,31 +209,37 @@ pub fn block_template(mut txdata: Vec<Transaction>) -> Block {
         .expect("error calculating merkle root ");
     block.header.merkle_root = merkle_root;
 
+    //TODO:  Add valid witness commitment to output.scipt_pub_key of coinbase output
+
+    /*
+    let witness_root = block.witness_root().expect("error calculating root");
+    let witness_commitment = Block::compute_witness_commitment(&witness_root, &[0]);
+
+    block.txdata[0].output[0].script_pubkey =
+        ScriptBuf::from_bytes(witness_commitment.as_byte_array().to_vec());
+     */
+    
+
     block
 }
 
-// returns sha256 hash of blockheader
-fn hash_block_header(v: Vec<u8>) -> [u8; 32] {
-    let slice = v.as_slice();
-    let digest = sha256::Hash::hash(slice);
-    digest.to_byte_array()
-}
 
 // Increments and updates nonce until valid block is found
 pub fn mine_block(block: &mut Block) -> () {
     loop {
-        println!("mining with nonce {}", block.header.nonce);
-        let mut v = Vec::new();
-        block
-            .header
-            .consensus_encode(&mut v)
-            .expect("error encoding block header");
-        let hash = hash_block_header(v);
-        if hash[0] == 0 && hash[1] == 0 {
+        
+        let hash = block.header.block_hash();
+        let hash = hash.as_byte_array();
+        
+        // Last two bytes must be zero because of endianess
+        if hash[30] == 0 && hash[31] == 0 {
             break;
+            
         }
         block.header.nonce += 1;
+        
     }
+
 }
 
 #[cfg(test)]
@@ -254,5 +272,36 @@ mod tests {
                 .expect("error creating Target")
                 .to_compact_lossy();
         println!("{:?}", bits)
+    }
+
+    #[test]
+
+    fn test_weight() {
+        let file = std::fs::File::open(
+            "mempool/00000a2d1a9e29116b539b85b6e893213b1ed95a08b7526a8d59a4b088fc6571.json",
+        )
+        .expect("error reading files"); // Read file
+        let json: Value = serde_json::from_reader(file).expect("error parsing json 1"); // Reads json from file
+        let raw_tx = json["hex"].as_str().expect("error parsing json 2"); // Gets raw transaction hex from json
+        let fee = json["fee"].as_u64().unwrap(); //Gets fee data from json
+        let weight = json["weight"].as_u64().unwrap();
+        let transaction_bytes = hex::decode(raw_tx).expect("error decoding hex"); // Decodes raw transaction data into a Vector of u8
+        let mut byte_slice = transaction_bytes.as_slice(); // Turns Vec<u8> into slice to be read by Transaction::consensus_decode
+        let transaction = Transaction::consensus_decode(&mut byte_slice).expect("error decoding"); // Turns raw transaction into struct Transaction
+        let weight2 = transaction.weight().to_vbytes_ceil();
+        assert_eq!(weight, weight2);
+    }
+
+
+    #[test]
+
+    fn header_hash(){
+        let tx = create_coinbase_transaction();
+        let mut block = block_template(vec!(tx));
+
+        mine_block(&mut block);
+
+        println!("aa {:?}", block.block_hash())
+
     }
 }
