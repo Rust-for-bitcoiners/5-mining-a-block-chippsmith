@@ -15,12 +15,10 @@ fn main() {
     // test_weight();
     // Read transactions from ./mempool
     let mut transactions = read_transactions_from_mempool_dir();
-    println!("{:?}", transactions.len());
     let mut block_weight = 0;
     for tx in &transactions {
         block_weight += tx.transaction.weight().to_vbytes_ceil();
     }
-    println!("mempool weight:  {:?} ", block_weight);
 
     // Sort transactions by fee rate
     sort_by_fee_rate(&mut transactions);
@@ -37,7 +35,6 @@ fn main() {
     // Mine block (adds one to nonce until finds a nonce that yields sha256 hash of block header less than difficulty and updates block.header.nonce )
     mine_block(&mut block); // Nonce 104874 yields valid block
 
-    println!("block hash: {:?}", block.block_hash());
 
     // Creates file out.txt in root
     let mut file = File::create("out.txt").expect("error opening file");
@@ -70,5 +67,4 @@ fn main() {
         write!(file, "{}\n", tx.compute_txid()).expect("error writing txid");
     }
 
-    println!("{:?}", weight);
 }

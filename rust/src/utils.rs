@@ -35,12 +35,12 @@ impl TransactionWithDetails {
 }
 
 pub fn read_transactions_from_mempool_dir() -> Vec<TransactionWithDetails> {
+    println!("Reading Transactions from mempool");
     let mut transactions = Vec::new(); // Empty vector to store transaction details
     let paths = fs::read_dir("./mempool").unwrap(); // Gets paths to all files in director ./mempool
     let mut total_weight = 0;
     // Loops through paths
     for path in paths {
-        println!("{:?}", (path.as_ref()).unwrap().path());
         if path.as_ref().unwrap().path().as_mut_os_string() == "./mempool/mempool.json"{
             continue
         }
@@ -56,7 +56,6 @@ pub fn read_transactions_from_mempool_dir() -> Vec<TransactionWithDetails> {
         let transaction_with_details = TransactionWithDetails { transaction, fee }; //must be a better way to add the fee than creating a new struct
         transactions.push(transaction_with_details);
     }
-    println!("total_weight:  {:?}", total_weight);
     transactions
 }
 
