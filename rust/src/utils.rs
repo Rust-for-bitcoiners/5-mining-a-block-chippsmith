@@ -204,20 +204,24 @@ pub fn block_template(mut txdata: Vec<Transaction>) -> Block {
     let header = block_header();
     let mut block = Block { header, txdata };
 
+
+    let witness_root = block.witness_root().expect("error calculating root");
+    let witness_reserve_value = [0_u8; 32].to_vec();
+    let witness_commitment = Block::compute_witness_commitment(&witness_root, &witness_reserve_value);
+    let mut witness_commitment = witness_commitment.as_byte_array().to_vec();
+    
+    let mut finished = hex::decode("6a24aa21a9ed").expect("error decoding hex");
+
+    finished.append(&mut witness_commitment);
+
+    block.txdata[0].output[0].script_pubkey =
+        ScriptBuf::from_bytes(finished);
+
+
     let merkle_root = block
         .compute_merkle_root()
         .expect("error calculating merkle root ");
     block.header.merkle_root = merkle_root;
-
-    //TODO:  Add valid witness commitment to output.scipt_pub_key of coinbase output
-
-    /*
-    let witness_root = block.witness_root().expect("error calculating root");
-    let witness_commitment = Block::compute_witness_commitment(&witness_root, &[0]);
-
-    block.txdata[0].output[0].script_pubkey =
-        ScriptBuf::from_bytes(witness_commitment.as_byte_array().to_vec());
-     */
     
 
     block
@@ -244,7 +248,7 @@ pub fn mine_block(block: &mut Block) -> () {
 
 #[cfg(test)]
 mod tests {
-    use bitcoin::Target;
+    use bitcoin::{constants::COINBASE_MATURITY, Target};
 
     use super::*;
 
@@ -302,6 +306,17 @@ mod tests {
         mine_block(&mut block);
 
         println!("aa {:?}", block.block_hash())
+
+    }
+
+    #[test]
+
+    fn test_witness_commitment() {
+        let tx = create_coinbase_transaction();
+        let block = block_template(vec!(tx));
+
+        println!("{:?}", block.txdata[0].output[0].script_pubkey)
+
 
     }
 }
