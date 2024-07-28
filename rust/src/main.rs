@@ -10,24 +10,7 @@ use utils::{
 use std::fs::File;
 use std::io::prelude::*;
 
-//use bitcoin::secp256k1::hashes::{sha256, Hash};
 
-fn test_weight() {
-    let file = std::fs::File::open(
-        "./mempool/0a331187bb44a28b342bd2fdfd2ff58147f0e4e43444b5efd89c71f3176caea6.json",
-    )
-    .expect("error reading files"); // Read file
-    let json: Value = serde_json::from_reader(file).expect("error parsing json 1"); // Reads json from file
-    let raw_tx = json["hex"].as_str().expect("error parsing json 2"); // Gets raw transaction hex from json
-    let fee = json["fee"].as_u64().unwrap(); //Gets fee data from json
-    let weight = json["weight"].as_u64().unwrap();
-    let transaction_bytes = hex::decode(raw_tx).expect("error decoding hex"); // Decodes raw transaction data into a Vector of u8
-    let mut byte_slice = transaction_bytes.as_slice(); // Turns Vec<u8> into slice to be read by Transaction::consensus_decode
-    let transaction = Transaction::consensus_decode(&mut byte_slice).expect("error decoding"); // Turns raw transaction into struct Transaction
-    let weight2 = transaction.total_size() as u64;
-    println!("weight: {}, weight 2: {}", weight, weight2);
-    assert_eq!(weight, weight2);
-}
 fn main() {
     // test_weight();
     // Read transactions from ./mempool
